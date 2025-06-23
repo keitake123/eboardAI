@@ -173,7 +173,7 @@
         const subtitlePreview = document.getElementById('subtitlePreview');
         
         let parsedCurriculumData = {}; 
-        let loadedSubtitleText = null;
+        let loadedSubtitleText = null; 
         
         console.log("JavaScript is loading - debug test"); 
 
@@ -626,7 +626,7 @@
                     }),
                 });
 
-                if (!response.ok) {
+                if (!response.ok) { 
                     const errorText = await response.text().catch(() => "レスポンスの読み取りに失敗");
                     console.error("API Error Response:", errorText);
                     let errorMessage = `API エラー (ステータス: ${response.status})`;
@@ -644,11 +644,11 @@
                     throw new Error(errorMessage);
                 }
 
-                const result = await response.json();
+                const result = await response.json(); 
                 console.log("API Response:", result);
 
                 if (result.text) {
-                    aiResponse.textContent = result.text;
+                aiResponse.textContent = result.text; 
                 } else {
                     throw new Error("APIからの応答が予期しない形式です。");
                 }
