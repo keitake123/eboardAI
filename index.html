@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教員向け 生成AI活用 授業支援システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #aiResponse::-webkit-scrollbar, #subtitlePreview::-webkit-scrollbar {
+            width: 8px;
+        }
+        #aiResponse::-webkit-scrollbar-track, #subtitlePreview::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #aiResponse::-webkit-scrollbar-thumb, #subtitlePreview::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #aiResponse::-webkit-scrollbar-thumb:hover, #subtitlePreview::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        #dataLoadingIndicator, #subtitleLoadingIndicator {
+            text-align: center;
+            padding: 10px;
+            color: #3498db;
+        }
+        .prompt-suggestion-btn {
+            @apply bg-sky-100 text-sky-700 border border-sky-300 hover:bg-sky-200 focus:ring-sky-500;
+        }
+        .subtitle-btn {
+             @apply bg-emerald-500 hover:bg-emerald-600 text-white;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-4xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-sky-700">教員向け 生成AI活用 授業支援システム</h1>
+            <p class="text-slate-600 mt-2">選択した単元・動画（＋字幕）に基づき、生成AIが授業準備をサポートします。</p>
+        </header>
+
+        <div id="dataLoadingIndicator" class="hidden">
+            <div class="loader"></div>
+            <p>単元データを読み込んでいます...</p>
+        </div>
+
+        <div id="mainContent" class="hidden">
+            <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                <h2 class="text-xl font-semibold mb-4 text-sky-600">1. 授業内容を選択してください</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label for="subjectSelector" class="block text-sm font-medium text-slate-700 mb-1">教科・学年:</label>
+                        <select id="subjectSelector" class="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-sky-500 focus:border-sky-500 transition duration-150">
+                            <option value="">-- 教科・学年を選択 --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="unitSelector" class="block text-sm font-medium text-slate-700 mb-1">単元:</label>
+                        <select id="unitSelector" class="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-sky-500 focus:border-sky-500 transition duration-150" disabled>
+                            <option value="">-- 単元を選択 --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="videoTitleSelector" class="block text-sm font-medium text-slate-700 mb-1">動画タイトル:</label>
+                        <select id="videoTitleSelector" class="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-sky-500 focus:border-sky-500 transition duration-150" disabled>
+                            <option value="">-- 動画を選択 --</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="selectedUnitInfo" class="mt-4 p-3 bg-sky-50 border border-sky-200 rounded-lg text-sky-700 hidden">
+                    <p><span class="font-semibold">選択中の内容:</span> <span id="currentUnitDisplay"></span></p>
+                    <p id="currentVideoTitleDisplayContainer" class="hidden"><span class="font-semibold">動画:</span> <span id="currentVideoDisplay"></span></p>
+                </div>
+                 <div id="subtitleSection" class="mt-4 hidden">
+                    <button id="loadSubtitleButton" class="subtitle-btn w-full sm:w-auto text-sm py-2 px-4 rounded-lg shadow-sm transition duration-150 ease-in-out">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 inline-block mr-1 align-middle">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m2.25-6.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                        </svg>
+                        字幕を読み込む
+                    </button>
+                    <div id="subtitleLoadingIndicator" class="hidden mt-2">
+                        <div class="loader !w-5 !h-5 !border-2"></div>
+                        <p class="text-xs">字幕を読み込み中...</p>
+                    </div>
+                    <div id="subtitleStatus" class="text-sm text-slate-600 mt-2"></div>
+                    <textarea id="subtitlePreview" class="w-full p-2 mt-2 border border-slate-300 rounded-lg text-xs h-24 bg-slate-50 hidden" readonly></textarea>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">
+                    ※ 単元リストは、公開されたGoogleスプレッドシートのCSVデータから動的に読み込んでいます。
+                </p>
+            </div>
+
+            <div id="aiInteractionSection" class="bg-white p-6 rounded-xl shadow-lg hidden">
+                <h2 class="text-xl font-semibold mb-4 text-sky-600">2. AIに依頼する内容を入力してください</h2>
+                
+                <div class="mb-4">
+                    <p class="block text-sm font-medium text-slate-700 mb-2">または、以下の候補から選択してください:</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                        <button id="promptSuggestion1" class="prompt-suggestion-btn w-full text-sm py-2 px-3 rounded-lg shadow-sm transition duration-150 ease-in-out">導入案を3つ提案</button>
+                        <button id="promptSuggestion2" class="prompt-suggestion-btn w-full text-sm py-2 px-3 rounded-lg shadow-sm transition duration-150 ease-in-out">小テスト5問作成(解答付)</button>
+                        <button id="promptSuggestion3" class="prompt-suggestion-btn w-full text-sm py-2 px-3 rounded-lg shadow-sm transition duration-150 ease-in-out">活動アイデアを提案</button>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label for="aiPrompt" class="block text-sm font-medium text-slate-700 mb-1">プロンプト:</label>
+                    <textarea id="aiPrompt" rows="4" class="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-sky-500 focus:border-sky-500 transition duration-150" placeholder="例: この動画の内容と字幕に基づいた小テストを5問作成してください。"></textarea>
+                </div>
+                <button id="generateButton" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out transform hover:-translate-y-0.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 inline-block mr-2 align-middle">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L1.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09l2.846.813-.813 2.846a4.5 4.5 0 00-3.09 3.09zM18.25 12L17 14.25l-1.25-2.25L13.5 11l2.25-1.25L17 7.5l1.25 2.25L20.5 11l-2.25 1.25z" />
+                    </svg>
+                    生成AIでアイデア作成
+                </button>
+
+                <div id="loadingIndicator" class="loader hidden mt-6"></div>
+                
+                <div id="aiResponseSection" class="mt-6 hidden">
+                    <h3 class="text-lg font-semibold mb-2 text-sky-600">AIからの提案:</h3>
+                    <div id="aiResponse" class="p-4 bg-slate-50 border border-slate-200 rounded-lg max-h-96 overflow-y-auto whitespace-pre-wrap">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM要素の取得
+        const subjectSelector = document.getElementById('subjectSelector');
+        const unitSelector = document.getElementById('unitSelector');
+        const videoTitleSelector = document.getElementById('videoTitleSelector'); 
+        const selectedUnitInfo = document.getElementById('selectedUnitInfo');
+        const currentUnitDisplay = document.getElementById('currentUnitDisplay');
+        const currentVideoDisplay = document.getElementById('currentVideoDisplay'); 
+        const currentVideoTitleDisplayContainer = document.getElementById('currentVideoTitleDisplayContainer'); 
+        const aiInteractionSection = document.getElementById('aiInteractionSection');
+        const aiPrompt = document.getElementById('aiPrompt');
+        const generateButton = document.getElementById('generateButton');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const aiResponseSection = document.getElementById('aiResponseSection');
+        const aiResponse = document.getElementById('aiResponse');
+        const dataLoadingIndicator = document.getElementById('dataLoadingIndicator');
+        const mainContent = document.getElementById('mainContent');
+
+        const promptSuggestion1 = document.getElementById('promptSuggestion1');
+        const promptSuggestion2 = document.getElementById('promptSuggestion2');
+        const promptSuggestion3 = document.getElementById('promptSuggestion3');
+
+        const subtitleSection = document.getElementById('subtitleSection');
+        const loadSubtitleButton = document.getElementById('loadSubtitleButton');
+        const subtitleLoadingIndicator = document.getElementById('subtitleLoadingIndicator');
+        const subtitleStatus = document.getElementById('subtitleStatus');
+        const subtitlePreview = document.getElementById('subtitlePreview');
+        
+        let parsedCurriculumData = {}; 
+        let loadedSubtitleText = null;
+        
+        console.log("JavaScript is loading - debug test"); 
+
+        // CSVデータを解析し、階層的なオブジェクトを生成する関数
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n'); 
+            if (lines.length < 2) {
+                console.error("CSVデータが空またはヘッダーしかありません。");
+                return {};
+            }
+            
+            let headerLine = lines.shift().trim(); 
+            if (headerLine.startsWith('\ufeff')) { 
+                headerLine = headerLine.substring(1);
+            }
+            
+            const headers = headerLine.split(',');
+            console.log("CSV Headers:", headers);
+            
+            const subjectColName = "教科"; 
+            const gradeColName = "学年";   
+            const unitColName = "単元名"; 
+            const videoTitleColName = "動画名"; 
+            const videoIdColName = "動画ID"; // Changed from 字幕ファイルURL to 動画ID
+
+            const subjectIndex = headers.indexOf(subjectColName);
+            const gradeIndex = headers.indexOf(gradeColName);
+            const unitNameIndex = headers.indexOf(unitColName);
+            const videoTitleIndex = headers.indexOf(videoTitleColName);
+            const videoIdIndex = headers.indexOf(videoIdColName); // Get video ID instead
+            
+            console.log("Column indices:", {
+                subject: subjectIndex,
+                grade: gradeIndex,
+                unit: unitNameIndex,
+                videoTitle: videoTitleIndex,
+                videoId: videoIdIndex
+            });
+
+
+            if (subjectIndex === -1 || gradeIndex === -1 || unitNameIndex === -1 || videoTitleIndex === -1 || videoIdIndex === -1) {
+                const errorMsg = `CSVヘッダーに必須の列名 ("${subjectColName}", "${gradeColName}", "${unitColName}", "${videoTitleColName}", "${videoIdColName}") が見つかりません。\n検出されたヘッダー: [${headers.join(', ')}]\n公開されたスプレッドシートの1行目が正しくこれらの列名になっているか確認してください。`;
+                console.error("Error in parseCSV (Header Check):", errorMsg); 
+                displayModal(errorMsg);
+                return {};
+            }
+            
+            const data = {}; 
+            lines.forEach((line, index) => { 
+                const trimmedLine = line.trim(); 
+                if (!trimmedLine) return; 
+
+                const parts = trimmedLine.split(','); 
+                if (parts.length >= Math.max(subjectIndex, gradeIndex, unitNameIndex, videoTitleIndex, videoIdIndex) + 1) { 
+                    const schoolSubject = parts[subjectIndex]?.trim();
+                    const grade = parts[gradeIndex]?.trim();
+                    const unitName = parts[unitNameIndex]?.trim();
+                    const videoTitle = parts[videoTitleIndex]?.trim();
+                    const videoId = parts[videoIdIndex]?.trim(); // Get video ID
+                    
+                    if (!schoolSubject || !grade || !unitName || !videoTitle || !videoId) { 
+                        console.warn(`CSV行 ${index + 2} に動画IDまでの必須フィールドのいずれかが空です:`, trimmedLine); 
+                        return; 
+                    }
+                    const subjectKey = `${schoolSubject} (${grade})`; 
+                    
+                    if (!data[subjectKey]) {
+                        data[subjectKey] = {};
+                    }
+                    if (!data[subjectKey][unitName]) {
+                        data[subjectKey][unitName] = [];
+                    }
+                    
+                    const existingVideo = data[subjectKey][unitName].find(v => v.title === videoTitle);
+                    if (!existingVideo) {
+                         console.log(`Adding video: ${videoTitle}, ID: ${videoId}`); // Debug log
+                         data[subjectKey][unitName].push({ title: videoTitle, videoId: videoId }); // Store video ID instead of subtitle URL
+                    }
+                } else {
+                    console.warn(`CSV行 ${index + 2} の列数が不足しています:`, trimmedLine);
+                }
+            });
+            // console.log("Data structure created by parseCSV:", JSON.parse(JSON.stringify(data))); 
+            return data; 
+        }
+
+        // VTTコンテンツから純粋なテキストを抽出する関数
+        function parseVTT(vttContent) {
+            // console.log("--- Inside parseVTT ---");
+            if (!vttContent) {
+                // console.log("parseVTT: vttContent is empty or null.");
+                return "";
+            }
+            // console.log("parseVTT: Raw vttContent (first 300 chars):\n", vttContent.substring(0,300)); 
+
+            const lines = vttContent.split(/\r?\n/);
+            let textOnly = "";
+            let inCue = false; 
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                // console.log(`parseVTT: Processing line ${i + 1}: "${line}"`); 
+
+                if (line.includes("-->")) { 
+                    inCue = true;
+                    continue; 
+                }
+
+                if (line.trim() === "" && inCue) { 
+                    inCue = false; 
+                    if (textOnly.length > 0 && !textOnly.endsWith("\n\n")) { 
+                         textOnly += "\n"; 
+                    }
+                    continue;
+                }
+                
+                if (inCue) { 
+                    const cleanLine = line.replace(/<[^>]+>/g, '').trim();
+                    // console.log(`parseVTT: Cue text line. Cleaned: "${cleanLine}"`);
+                    if (cleanLine) { 
+                        if (textOnly.length > 0 && !textOnly.endsWith("\n") && !textOnly.endsWith(" ")) {
+                            textOnly += " ";
+                        }
+                        textOnly += cleanLine;
+                    }
+                }
+
+                if (line.startsWith("WEBVTT") || line.startsWith("NOTE") || line.startsWith("STYLE")) {
+                    // console.log("parseVTT: Meta line found (WEBVTT, NOTE, STYLE). Setting inCue to false if it was true.");
+                    if(inCue) inCue = false; 
+                }
+            }
+            // console.log("parseVTT: Final extracted text (first 300 chars):\n", textOnly.substring(0,300)); 
+            return textOnly.trim(); 
+        }
+
+
+        function populateSelectors(currentCurriculumData) {
+            subjectSelector.innerHTML = '<option value="">-- 教科・学年を選択 --</option>'; 
+            Object.keys(currentCurriculumData).sort().forEach(subjectKey => {
+                const option = document.createElement('option');
+                option.value = subjectKey;
+                option.textContent = subjectKey;
+                subjectSelector.appendChild(option);
+            });
+        }
+        
+        async function initializeApp() {
+            dataLoadingIndicator.classList.remove('hidden'); 
+            mainContent.classList.add('hidden'); 
+
+            const csvUrl = "eboard単元一覧表_202404版_統合 - 動画一覧 (3).csv";
+            
+            if (!sessionStorage.getItem('initialModalShown')) {
+                 displayModal(`ローカルCSVファイル: ${csvUrl} から単元データを読み込みます。\n\n字幕ファイルは vtt_files フォルダから動画IDに基づいて自動的に読み込まれます。`);
+                 sessionStorage.setItem('initialModalShown', 'true');
+            }
+
+            try {
+                const response = await fetch(csvUrl); 
+                if (!response.ok) { 
+                    const responseText = await response.text();
+                    if (responseText.toLowerCase().includes("<html")) {
+                         throw new Error(`CSVファイルの取得に失敗しました。ステータス: ${response.status} ${response.statusText}。\n取得した内容はCSVではなくHTMLでした。URLが正しいか、または「ウェブに公開」の設定（特に「自動的に再公開する」がオンになっているか）を確認してください。`);
+                    }
+                    throw new Error(`CSVファイルの取得に失敗しました。ステータス: ${response.status} ${response.statusText}。`);
+                }
+                const csvText = await response.text(); 
+                // console.log("Fetched CSV Text (first 500 chars):", csvText.substring(0, 500)); 
+                
+                parsedCurriculumData = parseCSV(csvText); 
+                console.log("Parsed Curriculum Data (initializeApp):", JSON.parse(JSON.stringify(parsedCurriculumData))); 
+
+
+                if (Object.keys(parsedCurriculumData).length === 0 && csvText.trim() !== "") { 
+                     displayModal("単元データの読み込みに成功しましたが、解析後のデータが空です。\nCSVの内容や形式、特にヘッダー行（「教科」「学年」「単元名」「動画名」「字幕ファイルURL」が含まれているか）と、対象シートにデータが存在するかを確認してください。");
+                } else if (csvText.trim() === "" && Object.keys(parsedCurriculumData).length === 0) { 
+                    displayModal("取得したCSVデータが空でした。公開されているスプレッドシートにデータが含まれているか確認してください。");
+                }
+                populateSelectors(parsedCurriculumData); 
+                mainContent.classList.remove('hidden'); 
+            } catch (error) { 
+                console.error("単元データの読み込みまたは解析に失敗しました:", error);
+                displayModal(`単元データの読み込みに失敗しました:\n${error.message}`);
+                dataLoadingIndicator.innerHTML = `<p class='text-red-500 p-4'>エラー: ${error.message}</p>`; 
+            } finally {
+                 dataLoadingIndicator.classList.add('hidden'); 
+            }
+        }
+
+        subjectSelector.addEventListener('change', function() {
+            const selectedSubjectKey = this.value;
+            // console.log("--- Subject Selector Changed ---"); 
+            // console.log("Selected Subject Key:", selectedSubjectKey); 
+
+            // if (parsedCurriculumData && typeof parsedCurriculumData === 'object') { 
+            //      console.log("Data for selected subject (before Object.keys):", JSON.parse(JSON.stringify(parsedCurriculumData[selectedSubjectKey])));
+            // } else {
+            //      console.warn("parsedCurriculumData is not an object or is undefined at subject selection.");
+            // }
+
+            unitSelector.innerHTML = '<option value="">-- 単元を選択 --</option>';
+            videoTitleSelector.innerHTML = '<option value="">-- 動画を選択 --</option>'; 
+            unitSelector.disabled = true;
+            videoTitleSelector.disabled = true; 
+            selectedUnitInfo.classList.add('hidden');
+            currentVideoTitleDisplayContainer.classList.add('hidden');
+            subtitleSection.classList.add('hidden'); 
+            aiInteractionSection.classList.add('hidden');
+            resetSubtitleState();
+
+            if (selectedSubjectKey && parsedCurriculumData && parsedCurriculumData[selectedSubjectKey] && typeof parsedCurriculumData[selectedSubjectKey] === 'object') {
+                const unitNames = Object.keys(parsedCurriculumData[selectedSubjectKey]).sort();
+                // console.log(`Unit names for '${selectedSubjectKey}':`, unitNames); 
+
+                if (unitNames.length > 0) {
+                    unitNames.forEach(unitName => { 
+                        const option = document.createElement('option');
+                        option.value = unitName;
+                        option.textContent = unitName;
+                        unitSelector.appendChild(option);
+                    });
+                    unitSelector.disabled = false; 
+                    // console.log(`Unit selector populated for '${selectedSubjectKey}'.`); 
+                } else {
+                    console.warn("選択された教科・学年に単元データがありません (unitNames array is empty):", selectedSubjectKey);
+                    displayModal(`「${selectedSubjectKey}」には登録されている単元がありません。CSVデータを確認してください。`);
+                }
+            } else if (selectedSubjectKey) {
+                 console.warn("parsedCurriculumDataに選択された教科・学年のキーが存在しないか、対応するデータがオブジェクトではありません:", selectedSubjectKey, "Data type:", typeof parsedCurriculumData[selectedSubjectKey]);
+                 displayModal(`「${selectedSubjectKey}」の単元データが見つかりません。CSVデータを確認してください。`);
+            }
+        });
+
+        unitSelector.addEventListener('change', function() {
+            const selectedSubjectKey = subjectSelector.value;
+            const selectedUnitName = this.value;
+            videoTitleSelector.innerHTML = '<option value="">-- 動画を選択 --</option>';
+            videoTitleSelector.disabled = true;
+            selectedUnitInfo.classList.add('hidden'); 
+            currentVideoTitleDisplayContainer.classList.add('hidden');
+            subtitleSection.classList.add('hidden'); 
+            aiInteractionSection.classList.add('hidden');
+            resetSubtitleState();
+
+
+            if (selectedSubjectKey && selectedUnitName && 
+                parsedCurriculumData[selectedSubjectKey] && 
+                parsedCurriculumData[selectedSubjectKey][selectedUnitName]) {
+                
+                currentUnitDisplay.textContent = `${selectedSubjectKey} - ${selectedUnitName}`; 
+                selectedUnitInfo.classList.remove('hidden'); 
+
+                const videos = parsedCurriculumData[selectedSubjectKey][selectedUnitName]; 
+                if (videos && videos.length > 0) {
+                    videos.sort((a,b) => a.title.localeCompare(b.title)).forEach(video => { 
+                        console.log("Creating option for video:", video.title, "with ID:", video.videoId); // Debug log
+                        const option = document.createElement('option');
+                        option.value = video.title; 
+                        option.dataset.videoId = video.videoId; 
+                        option.textContent = video.title;
+                        videoTitleSelector.appendChild(option);
+                    });
+                    videoTitleSelector.disabled = false; 
+                } else {
+                    displayModal("この単元には登録されている動画がありません。");
+                }
+            }
+        });
+        
+        videoTitleSelector.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const currentVideoId = selectedOption.dataset.videoId || null; // Get video ID from correct attribute
+            
+            // Debug logging
+            console.log("Selected option:", selectedOption);
+            console.log("Dataset:", selectedOption.dataset);
+            console.log("Video ID:", currentVideoId);
+            
+            const selectedSubjectKey = subjectSelector.value;
+            const selectedUnitName = unitSelector.value;
+            const selectedVideoTitle = this.value;
+
+            aiInteractionSection.classList.add('hidden'); 
+            subtitleSection.classList.add('hidden');
+            // Don't reset subtitle state here as it clears the video ID
+            // resetSubtitleState();
+
+            if (selectedSubjectKey && selectedUnitName && selectedVideoTitle) {
+                currentVideoDisplay.textContent = selectedVideoTitle; 
+                currentVideoTitleDisplayContainer.classList.remove('hidden');
+                
+                if (currentVideoId && currentVideoId !== "null" && currentVideoId !== "") { 
+                    subtitleSection.classList.remove('hidden');
+                    subtitleStatus.textContent = `字幕ファイル (${currentVideoId}.vtt) が利用可能です。`;
+                    loadSubtitleButton.disabled = false;
+                    // Store the video ID globally for subtitle loading
+                    window.currentVideoId = currentVideoId;
+                    console.log("Setting window.currentVideoId to:", currentVideoId);
+                } else {
+                    subtitleStatus.textContent = `この動画には動画IDが登録されていません。(取得値: ${currentVideoId})`;
+                    subtitleSection.classList.remove('hidden'); 
+                    loadSubtitleButton.disabled = true;
+                    window.currentVideoId = null;
+                }
+                aiInteractionSection.classList.remove('hidden');
+                aiResponseSection.classList.add('hidden');
+                aiResponse.innerHTML = '';
+                aiPrompt.value = '';
+
+            } else {
+                currentVideoTitleDisplayContainer.classList.add('hidden');
+            }
+        });
+
+        function resetSubtitleState() {
+            console.log("resetSubtitleState called - clearing window.currentVideoId");
+            loadedSubtitleText = null;
+            window.currentVideoId = null;
+            subtitleStatus.textContent = '';
+            subtitlePreview.value = '';
+            subtitlePreview.classList.add('hidden');
+            loadSubtitleButton.disabled = false; 
+            subtitleLoadingIndicator.classList.add('hidden');
+            promptSuggestion1.textContent = "導入案を3つ提案";
+            promptSuggestion2.textContent = "小テスト5問作成(解答付)";
+            promptSuggestion3.textContent = "活動アイデアを提案";
+        }
+
+        loadSubtitleButton.addEventListener('click', async function() {
+            console.log("Load subtitle button clicked. Current video ID:", window.currentVideoId);
+            
+            if (!window.currentVideoId || window.currentVideoId === "null" || window.currentVideoId === "") { 
+                displayModal("動画IDが見つかりません。CSVに正しい動画IDが記載されているか確認してください。");
+                return;
+            }
+            // Don't call resetSubtitleState here as it clears the video ID we need
+            loadedSubtitleText = null;
+            subtitleStatus.textContent = '';
+            subtitlePreview.value = '';
+            subtitlePreview.classList.add('hidden');
+            
+            subtitleLoadingIndicator.classList.remove('hidden');
+            subtitleStatus.textContent = "字幕を読み込み中...";
+            loadSubtitleButton.disabled = true;
+
+            const vttFileName = `${window.currentVideoId}.vtt`;
+            const vttFilePath = `vtt_files/${vttFileName}`;
+            
+            console.log("Video ID used for VTT:", window.currentVideoId);
+            console.log("VTT filename:", vttFileName);
+            console.log("Full VTT path:", vttFilePath);
+            console.log("Attempting to fetch VTT from local file:", vttFilePath);
+
+            try {
+                const response = await fetch(vttFilePath); 
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => "レスポンスボディの読み取りに失敗");
+                    console.error(`Fetch error response for ${vttFilePath}: Status ${response.status}, Body: ${errorText.substring(0,500)}`);
+                    throw new Error(`字幕ファイル (${vttFileName}) の取得に失敗しました。ステータス: ${response.status} ${response.statusText}。ファイルが vtt_files フォルダに存在するか確認してください。`);
+                }
+                const vttContent = await response.text();
+                // console.log("Fetched VTT content (first 300 chars):", vttContent.substring(0, 300)); 
+                
+                loadedSubtitleText = parseVTT(vttContent); 
+                // console.log("Parsed VTT text (first 300 chars):", loadedSubtitleText.substring(0,300)); 
+                
+                subtitleStatus.textContent = "字幕を読み込み、テキストを抽出しました。";
+                subtitlePreview.value = loadedSubtitleText; 
+                
+                if (loadedSubtitleText.trim() === "") {
+                    // console.warn("Extracted subtitle text is empty. Check VTT content and parsing logic. VTT content was:", vttContent.substring(0, 500)); 
+                    subtitleStatus.textContent = "字幕を読み込みましたが、抽出されたテキストが空です。VTTファイルの内容を確認してください。";
+                } else {
+                    subtitlePreview.classList.remove('hidden');
+                }
+                
+                promptSuggestion1.textContent = "導入案(字幕考慮)";
+                promptSuggestion2.textContent = "小テスト(字幕考慮)";
+                promptSuggestion3.textContent = "活動アイデア(字幕考慮)";
+
+            } catch (error) {
+                console.error("字幕読み込みエラー詳細:", error); 
+                let userErrorMessage = `字幕読み込みエラーが発生しました。\n詳細: ${error.message}`;
+                if (error.message.toLowerCase().includes("failed to fetch")) { 
+                    userErrorMessage += `\n\n考えられる原因:\n1. VTTファイル (${vttFileName}) が vtt_files フォルダに存在しない。\n2. ファイル名が正しくない。\n3. ローカルサーバーでアプリケーションを実行していない（file:// プロトコルではローカルファイルの読み込みが制限される場合があります）。`;
+                }
+                subtitleStatus.textContent = userErrorMessage; 
+                displayModal(userErrorMessage); 
+                loadedSubtitleText = null; 
+            } finally {
+                subtitleLoadingIndicator.classList.add('hidden');
+                loadSubtitleButton.disabled = false; 
+            }
+        });
+
+
+        promptSuggestion1.addEventListener('click', function() {
+            aiPrompt.value = loadedSubtitleText ? 
+                "この動画の内容と提供された字幕情報を踏まえて、単元の導入案を3つ提案してください。" : 
+                "この動画の内容を踏まえて、単元の導入案を3つ提案してください。";
+        });
+        promptSuggestion2.addEventListener('click', function() {
+            aiPrompt.value = loadedSubtitleText ? 
+                "この動画の内容と提供された字幕情報に基づいて、小テストを5問作成してください（解答付き）。" :
+                "この動画の内容に関する小テストを5問作成してください（解答付き）。";
+        });
+        promptSuggestion3.addEventListener('click', function() {
+            aiPrompt.value = loadedSubtitleText ?
+                "この動画の内容と提供された字幕情報を活用した活動アイデアを教えてください。" :
+                "この動画の内容を補足するような活動アイデアを教えてください。";
+        });
+
+
+        generateButton.addEventListener('click', async function() {
+            const selectedSubject = subjectSelector.value;
+            const selectedUnit = unitSelector.value;
+            const selectedVideoTitle = videoTitleSelector.value; 
+            const userPrompt = aiPrompt.value.trim();
+
+            if (!selectedSubject || !selectedUnit || !selectedVideoTitle) { 
+                displayModal("教科・学年、単元、動画タイトルをすべて選択してください。");
+                return;
+            }
+            if (!userPrompt) {
+                displayModal("AIへの依頼内容を入力してください。");
+                return;
+            }
+
+            loadingIndicator.classList.remove('hidden'); 
+            aiResponseSection.classList.add('hidden');
+            aiResponse.innerHTML = '';
+            generateButton.disabled = true; 
+            generateButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+            try {
+                console.log("Sending request to Netlify function");
+
+                const response = await fetch('/.netlify/functions/getairesponse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        subject: selectedSubject,
+                        unit: selectedUnit,
+                        videoTitle: selectedVideoTitle,
+                        subtitleText: loadedSubtitleText,
+                        userRawPrompt: userPrompt
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => "レスポンスの読み取りに失敗");
+                    console.error("API Error Response:", errorText);
+                    let errorMessage = `API エラー (ステータス: ${response.status})`;
+                    
+                    if (response.status === 400) {
+                        errorMessage += "\nリクエスト形式が正しくありません。";
+                    } else if (response.status === 403) {
+                        errorMessage += "\nAPIキーの権限が不足しているか、Gemini APIが有効になっていません。";
+                    } else if (response.status === 429) {
+                        errorMessage += "\nAPI使用量の上限に達しました。しばらく時間をおいてから再試行してください。";
+                    } else if (response.status === 500) {
+                        errorMessage += "\nサーバー内部エラーが発生しました。";
+                    }
+                    
+                    throw new Error(errorMessage);
+                }
+
+                const result = await response.json();
+                console.log("API Response:", result);
+
+                if (result.text) {
+                    aiResponse.textContent = result.text;
+                } else {
+                    throw new Error("APIからの応答が予期しない形式です。");
+                }
+                
+            } catch (error) { 
+                console.error('API エラー:', error); 
+                aiResponse.textContent = `エラーが発生しました: ${error.message}\n\n対処方法:\n1. Netlify環境変数でGEMINI_API_KEYが正しく設定されているか確認\n2. Gemini APIが有効になっているか確認\n3. API使用量の上限を確認\n\n開発者コンソールで詳細を確認してください。`;
+            } finally { 
+                loadingIndicator.classList.add('hidden'); 
+                aiResponseSection.classList.remove('hidden'); 
+                generateButton.disabled = false; 
+                generateButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+        
+        function displayModal(message) {
+            const existingModal = document.getElementById('customAlertModal');
+            if (existingModal) existingModal.remove(); 
+
+            const modal = document.createElement('div');
+            modal.id = 'customAlertModal';
+            modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+                    <div class="mt-3 text-center">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">情報</h3>
+                        <div class="mt-2 px-7 py-3">
+                            <p class="text-sm text-gray-500 whitespace-pre-line">${message}</p>
+                        </div>
+                        <div class="items-center px-4 py-3">
+                            <button id="okButton" class="px-4 py-2 bg-sky-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-300">
+                                OK
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal); 
+            document.getElementById('okButton').addEventListener('click', () => {
+                modal.remove();
+            });
+        }
+
+        initializeApp();
+    </script>
+</body>
+</html>
